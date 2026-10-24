@@ -41,7 +41,7 @@ class MockBackend:
         cap = 1.6 * w * ((0.5 + 0.5 * p) * (1 + 0.03 * ris_gain.sum(1)))[:, None]
         served = np.minimum(load, cap)
         rho = load / cap
-        tput = served / BASE_LOAD
+        tput = served / load
         delay = np.clip(0.4 + 0.6 * rho ** 2, 0, 5)
         prb = np.clip(rho, 0, 1)
         drop = np.clip(1 - cap / load, 0, 1)
