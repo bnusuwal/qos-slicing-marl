@@ -25,8 +25,8 @@ class Critic(nn.Module):
         return self.q1(x).squeeze(-1), self.q2(x).squeeze(-1)
 
 class SACCTDE:
-    def __init__(self, lr=3e-4, tau=0.005, device="cpu"):
-        self.dev, self.tau = device, tau
+    def __init__(self, lr=3e-4, tau=0.005, gamma=GAMMA, device="cpu"):
+        self.dev, self.tau, self.gamma = device, tau, gamma
         self.actors = nn.ModuleList([Actor() for _ in range(N_GNB)]).to(device)
         self.critic = Critic().to(device); self.critic_t = copy.deepcopy(self.critic)
         self.log_alpha = torch.zeros(N_GNB, requires_grad=True, device=device)
@@ -50,7 +50,7 @@ class SACCTDE:
         with torch.no_grad():
             a2, lp2 = self._all(o2)
             q_t = torch.min(*self.critic_t(o2, a2))
-            y = r + GAMMA * (q_t - (alpha * lp2).sum(1))
+            y = r + self.gamma * (q_t - (alpha * lp2).sum(1))
         q1, q2 = self.critic(o, a)
         c_loss = ((q1 - y) ** 2).mean() + ((q2 - y) ** 2).mean()
         self.opt_c.zero_grad(); c_loss.backward()
