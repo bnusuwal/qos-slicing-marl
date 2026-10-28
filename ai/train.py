@@ -31,7 +31,7 @@ def main():
     p.add_argument("--warm", choices=["heuristic", "random"], default="heuristic")
     p.add_argument("--start", type=int, default=5000); p.add_argument("--randomize-wa1", action="store_true")
     p.add_argument("--backend", default="mock"); p.add_argument("--port", type=int, default=5555)
-    p.add_argument("--lr", type=float, default=3e-4); p.add_argument("--gamma", type=float, default=0.99); p.add_argument("--sim-dir", default="sim"); p.add_argument("--out", default="runs/exp")
+    p.add_argument("--lr", type=float, default=3e-4); p.add_argument("--gamma", type=float, default=0.9); p.add_argument("--sim-dir", default="sim"); p.add_argument("--out", default="runs/exp")
     a = p.parse_args()
 
     np.random.seed(a.seed); torch.manual_seed(a.seed)
@@ -69,8 +69,8 @@ def main():
             m = {k: float(np.mean([e[k] for e in ev])) for k in ev[0]}
             for k, v in m.items(): tb.add_scalar(f"eval/{k}", v, ep)
             print(f"ep {ep+1:3d} train_ret {ret:8.1f} eval_ret {m['ret']:8.1f} sla {m['sla_rate']:.3f}")
-            agent.save(f"{out}/last.pt")
-            if m["ret"] > best: best = m["ret"]; agent.save(f"{out}/best.pt")
+            agent.save(f"{out}/last.pt"); torch.save(pred.net.state_dict(), f"{out}/lstm_last.pt")
+            if m["ret"] > best: best = m["ret"]; agent.save(f"{out}/best.pt"); torch.save(pred.net.state_dict(), f"{out}/lstm_best.pt")
     json.dump({"best_eval_ret": best, "spec": SPEC_VERSION}, open(f"{out}/summary.json", "w"))
 
 if __name__ == "__main__":
