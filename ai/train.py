@@ -9,6 +9,7 @@ from ai.rl.sac_ctde import SACCTDE
 from ai.rl.lstm_pred import TrafficPredictor
 from ai.baselines import heuristic_action, random_action
 from ai.evaluate import run_episode, sac_policy
+from ai.reward import sla_met
 REWARD_SCALE = 1.0
 
 def make_backend(a):
@@ -16,13 +17,13 @@ def make_backend(a):
     from ai.envs.ns3_backend import Ns3Backend
     return Ns3Backend(port=a.port, sim_dir=a.sim_dir)
 
-def collect(env, buf, n, fn, seed0):
+def collect(env, buf, n, fn, seed0, bonus=0.0):
     ep = 0
     while buf.size < n:
         obs, _ = env.reset(seed=seed0 + ep); ep += 1
         for _ in range(EPISODE_STEPS):
-            a01 = fn(obs); obs2, r, _, tr, _ = env.step(a01)
-            buf.add(obs, a01 * 2 - 1, r.sum() * REWARD_SCALE, obs2); obs = obs2
+            a01 = fn(obs); obs2, r, _, tr, inf = env.step(a01)
+            buf.add(obs, a01 * 2 - 1, r.sum() * REWARD_SCALE + bonus * float(sla_met(inf["c"])), obs2); obs = obs2
             if buf.size >= n or tr: break
 
 def main():
@@ -31,7 +32,7 @@ def main():
     p.add_argument("--warm", choices=["heuristic", "random"], default="heuristic")
     p.add_argument("--start", type=int, default=5000); p.add_argument("--randomize-wa1", action="store_true")
     p.add_argument("--backend", default="mock"); p.add_argument("--port", type=int, default=5555)
-    p.add_argument("--lr", type=float, default=3e-4); p.add_argument("--gamma", type=float, default=0.9); p.add_argument("--sim-dir", default="sim"); p.add_argument("--out", default="runs/exp")
+    p.add_argument("--lr", type=float, default=3e-4); p.add_argument("--bonus", type=float, default=0.0); p.add_argument("--gamma", type=float, default=0.9); p.add_argument("--sim-dir", default="sim"); p.add_argument("--out", default="runs/exp")
     a = p.parse_args()
 
     np.random.seed(a.seed); torch.manual_seed(a.seed)
@@ -43,7 +44,7 @@ def main():
     buf, norm, agent = Replay(), RunningNorm(OBS_DIM), SACCTDE(lr=a.lr, gamma=a.gamma, device=dev)
 
     fn = (lambda o: heuristic_action(o)) if a.warm == "heuristic" else (lambda o: random_action(o))
-    collect(env, buf, a.start, fn, seed0=a.seed * 100_000 + 50_000)
+    collect(env, buf, a.start, fn, seed0=a.seed * 100_000 + 50_000, bonus=a.bonus)
     buf.save(f"{out}/warm_buffer.npz")
     norm.fit(buf.o[:buf.size].reshape(-1, OBS_DIM)); norm.save(f"{out}/norm.npz")
 
@@ -55,7 +56,7 @@ def main():
             if a.randomize_wa1 and t % NONRT_EVERY == 0: env.set_w_a1(np.random.dirichlet([4, 4, 4]))
             act = agent.act(norm(obs))
             obs2, r, _, _, info = env.step((act + 1) / 2)
-            buf.add(obs, act, r.sum() * REWARD_SCALE, obs2); seq.append(env.last_k6.copy())
+            buf.add(obs, act, r.sum() * REWARD_SCALE + a.bonus * float(sla_met(info["c"])), obs2); seq.append(env.last_k6.copy())
             obs, ret, gstep = obs2, ret + r.sum(), gstep + 1
             s = agent.update(buf.sample(256, norm, dev))
             if gstep % 100 == 0:
